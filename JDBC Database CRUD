@@ -1,0 +1,326 @@
+package com.library.ui;
+
+import com.library.model.Book;
+import com.library.model.Loan;
+import com.library.model.Member;
+import com.library.service.LibraryService;
+import java.util.List;
+import java.util.Scanner;
+
+public class ConsoleUI {
+    private final LibraryService service;
+    private final Scanner scanner;
+    
+    public ConsoleUI() {
+        this.service = new LibraryService();
+        this.scanner = new Scanner(System.in);
+    }
+    
+    public void start() {
+        while (true) {
+            printMainMenu();
+            int choice = getIntInput("Enter choice");
+            
+            try {
+                switch (choice) {
+                    case 1 -> manageBooks();
+                    case 2 -> manageMembers();
+                    case 3 -> manageLoans();
+                    case 4 -> viewOverdueLoans();
+                    case 5 -> {
+                        System.out.println("\nThank you for using Library Management System!");
+                        System.exit(0);
+                    }
+                    default -> System.out.println("✗ Invalid choice. Please try again.");
+                }
+            } catch (Exception e) {
+                System.out.println("✗ Error: " + e.getMessage());
+            }
+        }
+    }
+    
+    private void printMainMenu() {
+        System.out.println("\n" + "=".repeat(50));
+        System.out.println("        LIBRARY MANAGEMENT SYSTEM");
+        System.out.println("=".repeat(50));
+        System.out.println("1. 📚 Manage Books");
+        System.out.println("2. 👥 Manage Members");
+        System.out.println("3. 📖 Borrow/Return Books");
+        System.out.println("4. ⚠️ View Overdue Loans");
+        System.out.println("5. 🚪 Exit");
+        System.out.println("-".repeat(50));
+    }
+    
+    private void manageBooks() throws Exception {
+        while (true) {
+            System.out.println("\n--- Book Management ---");
+            System.out.println("1. Add Book");
+            System.out.println("2. View All Books");
+            System.out.println("3. Search Books");
+            System.out.println("4. Update Book");
+            System.out.println("5. Delete Book");
+            System.out.println("6. Back to Main Menu");
+            
+            int choice = getIntInput("Enter choice");
+            
+            switch (choice) {
+                case 1 -> addBook();
+                case 2 -> viewAllBooks();
+                case 3 -> searchBooks();
+                case 4 -> updateBook();
+                case 5 -> deleteBook();
+                case 6 -> { return; }
+                default -> System.out.println("✗ Invalid choice.");
+            }
+        }
+    }
+    
+    private void addBook() throws Exception {
+        System.out.println("\n--- Add New Book ---");
+        String isbn = getStringInput("ISBN");
+        String title = getStringInput("Title");
+        String author = getStringInput("Author");
+        int year = getIntInput("Publication Year");
+        String genre = getStringInput("Genre");
+        int copies = getIntInput("Total Copies");
+        
+        Book book = new Book(isbn, title, author, year, genre, copies);
+        Book saved = service.addBook(book);
+        System.out.println("✓ Book added successfully! ID: " + saved.getBookId());
+    }
+    
+    private void viewAllBooks() throws Exception {
+        List<Book> books = service.getAllBooks();
+        if (books.isEmpty()) {
+            System.out.println("\nNo books found in the library.");
+            return;
+        }
+        
+        System.out.println("\n" + "=".repeat(80));
+        System.out.printf("%-5s %-15s %-30s %-20s %-10s%n", "ID", "ISBN", "Title", "Author", "Available");
+        System.out.println("-".repeat(80));
+        
+        for (Book book : books) {
+            System.out.printf("%-5d %-15s %-30s %-20s %d/%d%n",
+                book.getBookId(), book.getIsbn(), 
+                truncate(book.getTitle(), 30), truncate(book.getAuthor(), 20),
+                book.getCopiesAvailable(), book.getTotalCopies());
+        }
+    }
+    
+    private void searchBooks() throws Exception {
+        String term = getStringInput("Enter search term (title/author/genre)");
+        List<Book> results = service.searchBooks(term);
+        
+        if (results.isEmpty()) {
+            System.out.println("No books found matching '" + term + "'");
+            return;
+        }
+        
+        System.out.println("\n--- Search Results ---");
+        for (Book book : results) {
+            System.out.printf("%d. %s by %s (ISBN: %s) - %s%n",
+                book.getBookId(), book.getTitle(), book.getAuthor(), 
+                book.getIsbn(), book.isAvailable() ? "Available" : "Checked Out");
+        }
+    }
+    
+    private void updateBook() throws Exception {
+        int id = getIntInput("Enter Book ID to update");
+        Book existing = service.getAllBooks().stream()
+            .filter(b -> b.getBookId() == id).findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Book not found"));
+        
+        System.out.println("Current details: " + existing.getTitle() + " by " + existing.getAuthor());
+        
+        String title = getStringInput("New Title (Enter to keep)", existing.getTitle());
+        String author = getStringInput("New Author (Enter to keep)", existing.getAuthor());
+        String genre = getStringInput("New Genre (Enter to keep)", existing.getGenre());
+        int copies = getIntInput("New Total Copies (Enter to keep)", existing.getTotalCopies());
+        
+        existing.setTitle(title);
+        existing.setAuthor(author);
+        existing.setGenre(genre);
+        existing.setTotalCopies(copies);
+        
+        service.updateBook(existing);
+        System.out.println("✓ Book updated successfully!");
+    }
+    
+    private void deleteBook() throws Exception {
+        int id = getIntInput("Enter Book ID to delete");
+        if (service.deleteBook(id)) {
+            System.out.println("✓ Book deleted successfully!");
+        }
+    }
+    
+    private void manageMembers() throws Exception {
+        while (true) {
+            System.out.println("\n--- Member Management ---");
+            System.out.println("1. Register New Member");
+            System.out.println("2. View All Members");
+            System.out.println("3. Update Member");
+            System.out.println("4. Delete Member");
+            System.out.println("5. Back to Main Menu");
+            
+            int choice = getIntInput("Enter choice");
+            
+            switch (choice) {
+                case 1 -> registerMember();
+                case 2 -> viewAllMembers();
+                case 3 -> updateMember();
+                case 4 -> deleteMember();
+                case 5 -> { return; }
+                default -> System.out.println("✗ Invalid choice.");
+            }
+        }
+    }
+    
+    private void registerMember() throws Exception {
+        System.out.println("\n--- Register New Member ---");
+        String name = getStringInput("Full Name");
+        String email = getStringInput("Email");
+        String phone = getStringInput("Phone Number");
+        
+        Member member = new Member(name, email, phone);
+        Member saved = service.registerMember(member);
+        System.out.println("✓ Member registered successfully! ID: " + saved.getMemberId());
+    }
+    
+    private void viewAllMembers() throws Exception {
+        List<Member> members = service.getAllMembers();
+        if (members.isEmpty()) {
+            System.out.println("\nNo members registered.");
+            return;
+        }
+        
+        System.out.println("\n" + "=".repeat(70));
+        System.out.printf("%-5s %-25s %-30s %-10s%n", "ID", "Name", "Email", "Status");
+        System.out.println("-".repeat(70));
+        
+        for (Member member : members) {
+            System.out.printf("%-5d %-25s %-30s %-10s%n",
+                member.getMemberId(), truncate(member.getName(), 25),
+                truncate(member.getEmail(), 30),
+                member.getIsActive() ? "Active" : "Inactive");
+        }
+    }
+    
+    private void updateMember() throws Exception {
+        int id = getIntInput("Enter Member ID to update");
+        Member existing = service.getAllMembers().stream()
+            .filter(m -> m.getMemberId() == id).findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Member not found"));
+        
+        System.out.println("Current: " + existing.getName() + " (" + existing.getEmail() + ")");
+        
+        String name = getStringInput("New Name (Enter to keep)", existing.getName());
+        String phone = getStringInput("New Phone (Enter to keep)", existing.getPhone());
+        
+        existing.setName(name);
+        existing.setPhone(phone);
+        
+        service.updateMember(existing);
+        System.out.println("✓ Member updated successfully!");
+    }
+    
+    private void deleteMember() throws Exception {
+        int id = getIntInput("Enter Member ID to delete");
+        if (service.deleteMember(id)) {
+            System.out.println("✓ Member deleted successfully!");
+        }
+    }
+    
+    private void manageLoans() throws Exception {
+        while (true) {
+            System.out.println("\n--- Circulation Management ---");
+            System.out.println("1. Borrow Book");
+            System.out.println("2. Return Book");
+            System.out.println("3. View Active Loans");
+            System.out.println("4. Back to Main Menu");
+            
+            int choice = getIntInput("Enter choice");
+            
+            switch (choice) {
+                case 1 -> borrowBook();
+                case 2 -> returnBook();
+                case 3 -> viewActiveLoans();
+                case 4 -> { return; }
+                default -> System.out.println("✗ Invalid choice.");
+            }
+        }
+    }
+    
+    private void borrowBook() throws Exception {
+        System.out.println("\n--- Borrow Book ---");
+        viewAllBooks();
+        int bookId = getIntInput("Enter Book ID");
+        int memberId = getIntInput("Enter Member ID");
+        
+        service.borrowBook(bookId, memberId);
+    }
+    
+    private void returnBook() throws Exception {
+        System.out.println("\n--- Return Book ---");
+        int loanId = getIntInput("Enter Loan ID");
+        service.returnBook(loanId);
+    }
+    
+    private void viewActiveLoans() throws Exception {
+        // Implementation for viewing active loans
+        System.out.println("\n--- Active Loans ---");
+        // Add loan listing logic here
+    }
+    
+    private void viewOverdueLoans() throws Exception {
+        List<Loan> overdue = service.getOverdueLoans();
+        if (overdue.isEmpty()) {
+            System.out.println("\n✓ No overdue loans found.");
+            return;
+        }
+        
+        System.out.println("\n--- Overdue Loans ---");
+        for (Loan loan : overdue) {
+            System.out.printf("Loan ID: %d, Book ID: %d, Member ID: %d, Due: %s%n",
+                loan.getLoanId(), loan.getBookId(), loan.getMemberId(), loan.getDueDate());
+        }
+    }
+    
+    // Utility methods
+    private String getStringInput(String prompt) {
+        System.out.print(prompt + ": ");
+        return scanner.nextLine().trim();
+    }
+    
+    private String getStringInput(String prompt, String defaultValue) {
+        System.out.print(prompt + " [" + defaultValue + "]: ");
+        String input = scanner.nextLine().trim();
+        return input.isEmpty() ? defaultValue : input;
+    }
+    
+    private int getIntInput(String prompt) {
+        while (true) {
+            try {
+                System.out.print(prompt + ": ");
+                return Integer.parseInt(scanner.nextLine().trim());
+            } catch (NumberFormatException e) {
+                System.out.println("✗ Please enter a valid number.");
+            }
+        }
+    }
+    
+    private int getIntInput(String prompt, int defaultValue) {
+        System.out.print(prompt + " [" + defaultValue + "]: ");
+        try {
+            String input = scanner.nextLine().trim();
+            return input.isEmpty() ? defaultValue : Integer.parseInt(input);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+    
+    private String truncate(String str, int maxLength) {
+        if (str == null) return "";
+        return str.length() <= maxLength ? str : str.substring(0, maxLength - 3) + "...";
+    }
+}
