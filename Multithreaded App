@@ -1,0 +1,139 @@
+src/main/java/com/example/processor/service/FileProcessorService.java
+
+package com.example.processor.service;
+
+import org.springframework.stereotype.Service;
+
+import java.io.BufferedReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+@Service
+public class FileProcessorService {
+
+    private final AtomicInteger totalFiles = new AtomicInteger(0);
+    private final AtomicInteger totalLines = new AtomicInteger(0);
+    private final AtomicInteger totalWords = new AtomicInteger(0);
+    private final ConcurrentHashMap<String, Integer> threadLoad = new ConcurrentHashMap<>();
+
+    public Map<String, Object> processDirectory(String directoryPath) throws Exception {
+        // Reset
+        totalFiles.set(0);
+        totalLines.set(0);
+        totalWords.set(0);
+        threadLoad.clear();
+
+        Path dir = Paths.get(directoryPath);
+        if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+            throw new IllegalArgumentException("Invalid directory: " + directoryPath);
+        }
+
+        List<Path> files;
+        try (var stream = Files.walk(dir)) {
+            files = stream.filter(Files::isRegularFile).toList();
+        }
+
+        if (files.isEmpty()) {
+            return Map.of("message", "No files found.");
+        }
+
+        int cores = Runtime.getRuntime().availableProcessors();
+        ExecutorService executor = Executors.newFixedThreadPool(cores * 2);
+
+        List<Callable<FileResult>> tasks = files.stream()
+                .map(file -> (Callable<FileResult>) () -> processSingleFile(file))
+                .toList();
+
+        List<Future<FileResult>> futures = executor.invokeAll(tasks);
+        executor.shutdown();
+
+        List<Map<String, Object>> fileDetails = new ArrayList<>();
+        for (Future<FileResult> future : futures) {
+            try {
+                FileResult r = future.get();
+                fileDetails.add(Map.of(
+                        "fileName", r.fileName,
+                        "lines", r.lines,
+                        "words", r.words,
+                        "thread", r.threadName,
+                        "timeMs", r.timeMs
+                ));
+            } catch (ExecutionException e) {
+                fileDetails.add(Map.of("error", e.getCause().getMessage()));
+            }
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("totalFiles", totalFiles.get());
+        summary.put("totalLines", totalLines.get());
+        summary.put("totalWords", totalWords.get());
+        summary.put("threadDistribution", new HashMap<>(threadLoad));
+        summary.put("files", fileDetails);
+        return summary;
+    }
+
+    private FileResult processSingleFile(Path file) throws Exception {
+        String threadName = Thread.currentThread().getName();
+        long start = System.currentTimeMillis();
+
+        int lines = 0, words = 0;
+        try (BufferedReader reader = Files.newBufferedReader(file)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                lines++;
+                words += line.split("\\s+").length;
+            }
+        }
+
+        long elapsed = System.currentTimeMillis() - start;
+
+        totalFiles.incrementAndGet();
+        totalLines.addAndGet(lines);
+        totalWords.addAndGet(words);
+        threadLoad.merge(threadName, 1, Integer::sum);
+
+        return new FileResult(file.getFileName().toString(), lines, words, threadName, elapsed);
+    }
+
+    private record FileResult(String fileName, int lines, int words, String threadName, long timeMs) {}
+}
+
+
+
+
+
+src/main/java/com/example/processor/controller/ProcessorController.java
+
+package com.example.processor.controller;
+
+import com.example.processor.service.FileProcessorService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/process")
+public class ProcessorController {
+
+    @Autowired
+    private FileProcessorService service;
+
+    @PostMapping
+    public Map<String, Object> process(@RequestParam String directory) {
+        try {
+            return service.processDirectory(directory);
+        } catch (Exception e) {
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    @GetMapping("/health")
+    public String health() {
+        return "OK";
+    }
+}
